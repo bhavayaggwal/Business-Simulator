@@ -1,7 +1,9 @@
 """Main window: the navigation bar and a stack holding every screen."""
-from PyQt6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton,
-                             QStackedWidget, QVBoxLayout, QWidget)
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QApplication, QButtonGroup, QHBoxLayout, QLabel, QMainWindow,
+                             QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
+from ui import soft, theme
 from ui.create_business_screen import CreateBusinessScreen
 from ui.dashboard_screen import DashboardScreen
 from ui.decisions_screen import DecisionsScreen
@@ -16,10 +18,14 @@ BUSINESS_SCREENS = {"hub", "decisions", "results", "history", "graphs"}
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, service):
+    def __init__(self, service, settings=None):
+        """`settings` is a QSettings used to remember the theme. Tests pass None,
+        so they never change the real user's choice."""
         super().__init__()
         self.setWindowTitle("Business Startup Simulator")
+        self.setMinimumSize(1000, 680)
         self.service = service
+        self.settings = settings
         self.glossary = service.glossary()
         self.user = None
         self.business_id = None
@@ -49,14 +55,26 @@ class MainWindow(QMainWindow):
         }
         for screen in self.screens.values():
             self.stack.addWidget(screen)
+
+        # Soft drop shadows on every button on the screens (not the nav bar).
+        for screen in self.screens.values():
+            for button in screen.findChildren(QPushButton):
+                soft.add_button_shadow(button)
+        # Buttons take focus from the Tab key only, so the focus ring shows for
+        # keyboard users but doesn't stay on a button after a mouse click.
+        for button in self.findChildren(QPushButton):
+            button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+
+        self.theme_switch.set_on_without_animation(theme.current().name == "dark")
         self.go("profile")
 
     def _build_nav(self):
         nav = QWidget()
         nav.setObjectName("NavBar")
-        nav.setFixedHeight(52)
+        nav.setFixedHeight(58)
         row = QHBoxLayout(nav)
-        row.setContentsMargins(20, 0, 20, 0)
+        row.setContentsMargins(22, 0, 22, 0)
+        row.setSpacing(6)
         name = QLabel("Business Simulator")
         name.setObjectName("AppName")
         row.addWidget(name)
@@ -77,10 +95,35 @@ class MainWindow(QMainWindow):
         self.who = QLabel("")
         self.who.setObjectName("WhoAmI")
         row.addWidget(self.who)
-        switch = QPushButton("Switch profile")
-        switch.clicked.connect(lambda: self.go("profile"))
-        row.addWidget(switch)
+        row.addSpacing(12)
+
+        theme_label = QLabel("Dark mode")
+        theme_label.setObjectName("ThemeLabel")
+        row.addWidget(theme_label)
+        self.theme_switch = soft.ToggleSwitch("Dark mode")
+        self.theme_switch.toggled.connect(
+            lambda on: self.set_theme("dark" if on else "light"))
+        row.addWidget(self.theme_switch)
+        row.addSpacing(12)
+
+        switch_profile = QPushButton("Switch profile")
+        switch_profile.clicked.connect(lambda: self.go("profile"))
+        row.addWidget(switch_profile)
         return nav
+
+    # ---- theme ----------------------------------------------------------
+    def set_theme(self, name):
+        """Re-colour the whole app, then let screens with hand-drawn colours redraw."""
+        soft.apply_theme(QApplication.instance(), name)
+        for screen in self.screens.values():
+            screen.retheme()
+            for button in screen.findChildren(QPushButton):
+                soft.recolour_button_shadow(button)
+        soft.set_dark_title_bar(self, name == "dark")
+        if self.theme_switch.isChecked() != (name == "dark"):
+            self.theme_switch.set_on_without_animation(name == "dark")
+        if self.settings is not None:
+            self.settings.setValue("theme", name)
 
     # ---- navigation -----------------------------------------------------
     def go(self, name):
@@ -92,6 +135,8 @@ class MainWindow(QMainWindow):
         screen.refresh()
         self.stack.setCurrentWidget(screen)
         self._update_nav(name)
+        # Start keyboard focus on the new page, not on whatever was clicked.
+        screen.setFocus()
 
     def _update_nav(self, current):
         self.nav_buttons["dashboard"].setEnabled(self.user is not None)

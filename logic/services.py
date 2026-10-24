@@ -103,14 +103,14 @@ class SimulatorService:
 
         result = engine.simulate_month(state, decisions, market_factor)
 
-        # In the SQL version these two writes happen in one transaction.
-        self.repo.add_result(result)
         business.current_month = result.month_no
         business.cash = result.closing_cash
         business.stock = result.closing_stock
         business.price = result.price
         business.marketing_budget = result.marketing_spend
-        self.repo.update_business(business)
+        # Saved together: in SQL Server this is one transaction, so a month is
+        # never stored without the business moving on to it (PRD §5).
+        self.repo.save_month(result, business)
 
         return MonthReport(result, engine.explain_month(state, result))
 

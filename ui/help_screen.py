@@ -1,8 +1,8 @@
 """Help: the glossary (same text as the info boxes) and how to use each screen."""
 from PyQt6.QtWidgets import QTextBrowser
 
-from ui.style import HEADING_FONT, LEDGER_GREEN, MUTED, RULE
-from ui.widgets import Screen
+from ui import theme
+from ui.widgets import Screen, card
 
 HOW_TO = [
     ("Your businesses", "Lists every business in your profile. Search by name or "
@@ -20,6 +20,8 @@ HOW_TO = [
      "type a month number to jump to it."),
     ("Graphs", "Trends over time, where your money went, and revenue against costs. "
      "You can compare profit with another of your businesses."),
+    ("Dark mode", "Use the switch at the top right to change between the light and "
+     "dark themes. The app remembers your choice."),
 ]
 
 
@@ -28,22 +30,29 @@ class HelpScreen(Screen):
         super().__init__(app, "Help",
                          "Key business terms, and how to use each screen. Hover over "
                          "any ⓘ in the app to see a term's definition where you are.")
+        help_card, help_layout = card(margins=(20, 14, 20, 16))
         self.browser = QTextBrowser()
         self.browser.setOpenExternalLinks(False)
         self.browser.setMinimumHeight(520)
-        self.body.addWidget(self.browser)
+        help_layout.addWidget(self.browser)
+        self.body.addWidget(help_card)
+
+    def retheme(self):
+        self.refresh()
 
     def refresh(self):
+        t = theme.current()
         terms = "".join(
-            f"<p style='margin:0 0 12px 0'><b>{t.term}</b><br>{t.definition}"
-            + (f"<br><span style='color:{MUTED}'>Example: {t.example}</span>"
-               if t.example else "")
+            f"<p style='margin:0 0 12px 0'><b>{term.term}</b><br>{term.definition}"
+            + (f"<br><span style='color:{t.muted}'>Example: {term.example}</span>"
+               if term.example else "")
             + "</p>"
-            for t in self.app.glossary.values())
+            for term in self.app.glossary.values())
         screens = "".join(f"<p style='margin:0 0 10px 0'><b>{name}</b><br>{text}</p>"
                           for name, text in HOW_TO)
-        heading = (f"style=\"font-family:'{HEADING_FONT}'; font-size:14pt; "
-                   f"color:{LEDGER_GREEN}; border-bottom:1px solid {RULE}\"")
+        heading = (f"style=\"font-size:14pt; font-weight:600; color:{t.accent}; "
+                   f"border-bottom:1px solid {t.rule}\"")
         self.browser.setHtml(
+            f"<div style='color:{t.text}'>"
             f"<h2 {heading}>Business terms</h2>{terms}"
-            f"<h2 {heading}>Using the simulator</h2>{screens}")
+            f"<h2 {heading}>Using the simulator</h2>{screens}</div>")

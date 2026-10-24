@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QComboBox, QHBoxLayout, QHeaderV
                              QTableWidgetItem)
 
 from ui.style import fmt_money
-from ui.widgets import Screen
+from ui.widgets import Screen, card
 
 
 class DashboardScreen(Screen):
@@ -16,8 +16,10 @@ class DashboardScreen(Screen):
 
         # Search row (linear search, objective 11)
         search_row = QHBoxLayout()
+        search_row.setSpacing(10)
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("Search your businesses")
+        self.search_box.setAccessibleName("Search your businesses")
         self.search_box.returnPressed.connect(self.search)
         self.search_field = QComboBox()
         self.search_field.addItem("by name", "name")
@@ -37,23 +39,27 @@ class DashboardScreen(Screen):
         self.message.hide()
         self.body.addWidget(self.message)
 
+        table_card, table_layout = card(margins=(14, 10, 14, 12))
         self.table = QTableWidget(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.setShowGrid(False)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setMinimumHeight(260)
         self.table.cellDoubleClicked.connect(lambda _r, _c: self.open_selected())
-        self.body.addWidget(self.table)
-
+        table_layout.addWidget(self.table)
         self.empty = QLabel("")
         self.empty.setObjectName("Muted")
         self.empty.hide()
-        self.body.addWidget(self.empty)
+        table_layout.addWidget(self.empty)
+        self.body.addWidget(table_card)
 
         buttons = QHBoxLayout()
+        buttons.setSpacing(10)
         open_button = QPushButton("Open business")
         open_button.setObjectName("Primary")
         open_button.clicked.connect(self.open_selected)

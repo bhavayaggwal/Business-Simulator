@@ -2,6 +2,10 @@
 
 Every check returns (value, None) when the input is valid, or (None, message)
 when it isn't, so each screen can show exactly what needs fixing.
+
+The upper limits keep every value inside the SQL Server column types
+(PRD §5), so extreme test data is rejected with a message instead of
+failing when it is saved.
 """
 import re
 from decimal import Decimal, InvalidOperation
@@ -9,10 +13,13 @@ from decimal import Decimal, InvalidOperation
 from logic.models import Decisions
 
 MAX_CAPITAL = Decimal("10000000")   # keeps totals inside DECIMAL(12,2)
+MAX_PRICE = Decimal("9999.99")      # per unit: a month's revenue stays inside DECIMAL(12,2)
+MAX_UNITS = 1_000_000               # units bought in one go, and base demand
+MAX_SENSITIVITY = Decimal("5")      # stored as DECIMAL(4,2)
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,30}$")
 
 
-def parse_money(text, label, allow_zero=False):
+def parse_money(text, label, allow_zero=False, maximum=None):
     """A number of pounds with at most 2 decimal places."""
     cleaned = str(text).strip().replace("£", "").replace(",", "")
     if cleaned == "":
@@ -29,10 +36,12 @@ def parse_money(text, label, allow_zero=False):
         return None, f"{label} can't be negative."
     if not allow_zero and value <= 0:
         return None, f"{label} must be more than £0."
+    if maximum is not None and value > maximum:
+        return None, f"{label} must be £{maximum:,} or less."
     return value, None
 
 
-def parse_whole(text, label, minimum=0):
+def parse_whole(text, label, minimum=0, maximum=None):
     """A whole number of at least `minimum`."""
     cleaned = str(text).strip().replace(",", "")
     if cleaned == "":
@@ -42,11 +51,13 @@ def parse_whole(text, label, minimum=0):
     value = int(cleaned)
     if value < minimum:
         return None, f"{label} must be a whole number of {minimum} or more."
+    if maximum is not None and value > maximum:
+        return None, f"{label} can't be more than {maximum:,}."
     return value, None
 
 
-def parse_positive_decimal(text, label):
-    """A plain number above 0 (used for price sensitivity)."""
+def parse_sensitivity(text, label="Price sensitivity"):
+    """A plain number from 0.01 to 5, with at most 2 decimal places."""
     cleaned = str(text).strip()
     try:
         value = Decimal(cleaned)
@@ -54,6 +65,10 @@ def parse_positive_decimal(text, label):
         return None, f"{label} must be a number."
     if not value.is_finite() or value <= 0:
         return None, f"{label} must be more than 0."
+    if value.as_tuple().exponent < -2:
+        return None, f"{label} can have at most 2 decimal places."
+    if value > MAX_SENSITIVITY:
+        return None, f"{label} must be {MAX_SENSITIVITY} or less."
     return value, None
 
 
@@ -93,16 +108,19 @@ def validate_business_form(form, existing_names):
     check("starting_capital", parse_money(form.get("starting_capital", ""), "Starting capital"))
     if clean["starting_capital"] is not None and clean["starting_capital"] >= MAX_CAPITAL:
         errors["starting_capital"] = "Starting capital must be below £10,000,000."
-    check("price", parse_money(form.get("price", ""), "Price"))
-    check("initial_stock", parse_whole(form.get("initial_stock", ""), "Initial stock", 0))
+    check("price", parse_money(form.get("price", ""), "Price", maximum=MAX_PRICE))
+    check("initial_stock", parse_whole(form.get("initial_stock", ""), "Initial stock", 0,
+                                       MAX_UNITS))
     check("marketing_budget", parse_money(form.get("marketing_budget", ""),
-                                          "Marketing budget", allow_zero=True))
-    check("base_demand", parse_whole(form.get("base_demand", ""), "Base demand", 1))
-    check("reference_price", parse_money(form.get("reference_price", ""), "Typical price"))
-    check("unit_cost", parse_money(form.get("unit_cost", ""), "Unit cost"))
-    check("fixed_cost", parse_money(form.get("fixed_cost", ""), "Fixed costs", allow_zero=True))
-    check("price_sensitivity", parse_positive_decimal(form.get("price_sensitivity", ""),
-                                                      "Price sensitivity"))
+                                          "Marketing budget", allow_zero=True,
+                                          maximum=MAX_CAPITAL))
+    check("base_demand", parse_whole(form.get("base_demand", ""), "Base demand", 1, MAX_UNITS))
+    check("reference_price", parse_money(form.get("reference_price", ""), "Typical price",
+                                         maximum=MAX_PRICE))
+    check("unit_cost", parse_money(form.get("unit_cost", ""), "Unit cost", maximum=MAX_PRICE))
+    check("fixed_cost", parse_money(form.get("fixed_cost", ""), "Fixed costs", allow_zero=True,
+                                    maximum=MAX_CAPITAL))
+    check("price_sensitivity", parse_sensitivity(form.get("price_sensitivity", "")))
 
     # Affordability checks only make sense once the numbers themselves are valid.
     capital = clean.get("starting_capital")
@@ -126,13 +144,14 @@ def validate_business_form(form, existing_names):
 def validate_decisions(price_text, marketing_text, units_text, cash, unit_cost):
     """Check one month's decisions. Returns (Decisions or None, list of messages)."""
     errors = []
-    price, error = parse_money(price_text, "Price")
+    price, error = parse_money(price_text, "Price", maximum=MAX_PRICE)
     if error:
         errors.append(error)
-    marketing, error = parse_money(marketing_text, "Marketing spend", allow_zero=True)
+    marketing, error = parse_money(marketing_text, "Marketing spend", allow_zero=True,
+                                   maximum=MAX_CAPITAL)
     if error:
         errors.append(error)
-    units, error = parse_whole(units_text, "Units to buy", 0)
+    units, error = parse_whole(units_text, "Units to buy", 0, MAX_UNITS)
     if error:
         errors.append(error)
 

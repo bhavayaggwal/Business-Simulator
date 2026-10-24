@@ -2,7 +2,7 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton
 
-from ui.widgets import FormField, Screen, muted, section
+from ui.widgets import FormField, Screen, card, muted, section
 
 
 class ProfileScreen(Screen):
@@ -10,41 +10,48 @@ class ProfileScreen(Screen):
         super().__init__(app, "Who's using the simulator?",
                          "Pick your profile to see your businesses. Each profile keeps its "
                          "own simulations separate, and only a username is stored.")
+        columns = QHBoxLayout()
+        columns.setSpacing(4)
 
+        # Left card: existing profiles
+        choose, choose_layout = card()
+        choose_layout.addWidget(section("Choose your profile"))
         self.profiles = QListWidget()
-        self.profiles.setMaximumWidth(420)
-        self.profiles.setMinimumHeight(170)
+        self.profiles.setMinimumHeight(200)
+        self.profiles.setAccessibleName("Profiles")
         self.profiles.itemDoubleClicked.connect(lambda _item: self.continue_with_selected())
-        self.body.addWidget(self.profiles)
-
+        choose_layout.addWidget(self.profiles)
         self.pick_error = QLabel("")
         self.pick_error.setObjectName("Error")
         self.pick_error.hide()
-        self.body.addWidget(self.pick_error)
-
+        choose_layout.addWidget(self.pick_error)
         row = QHBoxLayout()
         continue_button = QPushButton("Continue")
         continue_button.setObjectName("Primary")
         continue_button.clicked.connect(self.continue_with_selected)
         row.addWidget(continue_button)
         row.addStretch()
-        self.body.addLayout(row)
+        choose_layout.addLayout(row)
+        columns.addWidget(choose, 1)
 
-        self.body.addSpacing(16)
-        self.body.addWidget(section("New profile"))
-        self.body.addWidget(muted("3–30 letters, numbers or underscores. "
-                                  "Don't use your full name."))
+        # Right card: a new profile
+        create, create_layout = card()
+        create_layout.addWidget(section("New profile"))
+        create_layout.addWidget(muted("3–30 letters, numbers or underscores. "
+                                      "Don't use your full name."))
         self.new_name = FormField("Username", placeholder="e.g. alex_k")
-        self.new_name.setMaximumWidth(420)
         self.new_name.edit.returnPressed.connect(self.create_profile)
-        self.body.addWidget(self.new_name)
-
+        create_layout.addWidget(self.new_name)
         create_row = QHBoxLayout()
         create_button = QPushButton("Create profile")
         create_button.clicked.connect(self.create_profile)
         create_row.addWidget(create_button)
         create_row.addStretch()
-        self.body.addLayout(create_row)
+        create_layout.addLayout(create_row)
+        create_layout.addStretch()
+        columns.addWidget(create, 1)
+
+        self.body.addLayout(columns)
         self.body.addStretch()
 
     def refresh(self):
@@ -61,7 +68,7 @@ class ProfileScreen(Screen):
     def continue_with_selected(self):
         item = self.profiles.currentItem()
         if item is None:
-            self.pick_error.setText("Choose a profile first, or create a new one below.")
+            self.pick_error.setText("Choose a profile first, or create a new one.")
             self.pick_error.show()
             return
         self.app.sign_in(item.data(Qt.ItemDataRole.UserRole))

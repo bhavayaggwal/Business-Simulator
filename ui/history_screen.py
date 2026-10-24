@@ -6,8 +6,9 @@ from PyQt6.QtWidgets import (QAbstractItemView, QComboBox, QHBoxLayout, QHeaderV
                              QTableWidgetItem)
 
 from logic.models import MonthReport
-from ui.style import LOSS_RED, fmt_money, fmt_units
-from ui.widgets import Screen
+from ui import theme
+from ui.style import fmt_money, fmt_units
+from ui.widgets import Screen, card
 
 RIGHT = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
 
@@ -37,14 +38,18 @@ class HistoryScreen(Screen):
     def __init__(self, app):
         super().__init__(app, "History",
                          "Every month you've simulated. Sort by any figure to find your "
-                         "best and worst months, or jump straight to one month.")
+                         "best and worst months, or jump straight to one month.",
+                         max_width=1400)
 
         controls = QHBoxLayout()
+        controls.setSpacing(10)
         controls.addWidget(QLabel("Sort by"))
         self.sort_key = QComboBox()
+        self.sort_key.setAccessibleName("Sort by")
         for text, key in SORT_OPTIONS:
             self.sort_key.addItem(text, key)
         self.order = QComboBox()
+        self.order.setAccessibleName("Order")
         self.order.addItem("Highest first", True)
         self.order.addItem("Lowest first", False)
         sort_button = QPushButton("Sort")
@@ -55,7 +60,8 @@ class HistoryScreen(Screen):
         controls.addSpacing(24)
         controls.addWidget(QLabel("Go to month"))
         self.month_box = QLineEdit()
-        self.month_box.setMaximumWidth(80)
+        self.month_box.setAccessibleName("Go to month")
+        self.month_box.setMaximumWidth(90)
         self.month_box.returnPressed.connect(self.find_month)
         find_button = QPushButton("Find")
         find_button.clicked.connect(self.find_month)
@@ -69,24 +75,31 @@ class HistoryScreen(Screen):
         self.message.hide()
         self.body.addWidget(self.message)
 
+        table_card, table_layout = card(margins=(14, 10, 14, 12))
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels([c[0] for c in COLUMNS])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Column widths are set by fit_columns(), so no figure is cut off (DL-2).
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setDefaultAlignment(RIGHT)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(38)
+        self.table.setShowGrid(False)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setSortingEnabled(False)   # sorting is done by our merge sort
-        self.table.setMinimumHeight(320)
+        self.table.setMinimumHeight(340)
         self.table.cellDoubleClicked.connect(lambda _r, _c: self.view_statement())
-        self.body.addWidget(self.table)
-
+        table_layout.addWidget(self.table)
         self.empty = QLabel("No months yet. Simulate your first month from the "
                             "business hub.")
         self.empty.setObjectName("Muted")
-        self.body.addWidget(self.empty)
+        table_layout.addWidget(self.empty)
+        self.body.addWidget(table_card)
 
         buttons = QHBoxLayout()
+        buttons.setSpacing(10)
         view = QPushButton("View month statement")
         view.setObjectName("Primary")
         view.clicked.connect(self.view_statement)
@@ -108,8 +121,13 @@ class HistoryScreen(Screen):
         self.order.setCurrentIndex(1)
         self.show_rows(self.app.service.history(self.app.business_id))
 
+    def retheme(self):
+        # Loss figures are coloured cell by cell, so colour them again.
+        self.show_rows(self.rows)
+
     def show_rows(self, rows):
         self.rows = rows
+        loss_colour = QColor(theme.current().bad)
         self.table.setRowCount(len(rows))
         for r, record in enumerate(rows):
             for c, (_, field, fmt) in enumerate(COLUMNS):
@@ -117,9 +135,24 @@ class HistoryScreen(Screen):
                 item = QTableWidgetItem(fmt(value))
                 item.setTextAlignment(RIGHT)
                 if field == "profit" and value < 0:
-                    item.setForeground(QColor(LOSS_RED))
+                    item.setForeground(loss_colour)
                 self.table.setItem(r, c, item)
         self.empty.setVisible(not rows)
+        self.fit_columns()
+
+    def fit_columns(self):
+        """Make every column as wide as its widest entry, then share any spare
+        width between them, so figures are never cut off (DL-2)."""
+        self.table.resizeColumnsToContents()
+        spare = self.table.viewport().width() - self.table.horizontalHeader().length()
+        if spare > 0:
+            extra = spare // self.table.columnCount()
+            for col in range(self.table.columnCount()):
+                self.table.setColumnWidth(col, self.table.columnWidth(col) + extra)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fit_columns()
 
     def sort(self):
         self.message.hide()

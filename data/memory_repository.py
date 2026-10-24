@@ -74,6 +74,18 @@ class MemoryRepository:
         # Results are only ever appended in month order, so no sort is needed.
         return rows
 
+    def save_month(self, result, business: Business):
+        """Store a month's result and the business's new position together.
+        The SQL version does both in one transaction."""
+        self.add_result(result)
+        self.update_business(business)
+
+    def check_connection(self):
+        """Nothing to check: memory is always available."""
+
+    def close(self):
+        """Nothing to close."""
+
     # ---- glossary -------------------------------------------------------
     def get_glossary(self):
         return list(self._glossary)

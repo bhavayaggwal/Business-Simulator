@@ -1,12 +1,12 @@
 """Decisions: set this month's price, marketing and stock purchases."""
 from decimal import Decimal, InvalidOperation
 
-from PyQt6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton,
-                             QVBoxLayout)
+from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton
 
 from logic import validation
+from ui.soft import SoftCard
 from ui.style import fmt_money, fmt_units
-from ui.widgets import FormField, InfoLabel, Screen
+from ui.widgets import FormField, InfoLabel, Screen, card, repolish, rule, section
 
 
 class DecisionsScreen(Screen):
@@ -16,16 +16,15 @@ class DecisionsScreen(Screen):
                          "simulate it to see what happens.")
         g = app.glossary
         columns = QHBoxLayout()
-        columns.setSpacing(24)
+        columns.setSpacing(4)
 
-        # Left: the three decisions
-        form = QVBoxLayout()
-        form.setSpacing(10)
+        # Left card: the three decisions
+        form_card, form = card(spacing=10)
+        form.addWidget(section("This month's decisions"))
         self.price = FormField("Selling price per unit (£)", g, "Revenue")
         self.marketing = FormField("Marketing spend this month (£)", g, "Marketing spend")
         self.units = FormField("Units of stock to buy", g, "Stock / inventory")
         for field in (self.price, self.marketing, self.units):
-            field.setMaximumWidth(360)
             field.edit.textChanged.connect(self.update_plan)
             form.addWidget(field)
         self.hint = QLabel("")
@@ -33,25 +32,20 @@ class DecisionsScreen(Screen):
         self.hint.setWordWrap(True)
         form.addWidget(self.hint)
         form.addStretch()
-        columns.addLayout(form, 3)
+        columns.addWidget(form_card, 3)
 
-        # Right: where the business stands, and what this plan costs
-        panel = QFrame()
-        panel.setObjectName("Panel")
+        # Right card: where the business stands, and what this plan costs
+        panel = SoftCard()
         panel_layout = QGridLayout(panel)
-        panel_layout.setContentsMargins(18, 14, 18, 16)
-        panel_layout.setVerticalSpacing(8)
-        heading = QLabel("Your position")
-        heading.setObjectName("Section")
-        panel_layout.addWidget(heading, 0, 0, 1, 2)
+        panel_layout.setContentsMargins(22, 18, 22, 20)
+        panel_layout.setVerticalSpacing(10)
+        panel_layout.addWidget(section("Your position"), 0, 0, 1, 2)
         self.cash_now = self._panel_row(panel_layout, 1, "Cash now", "Cash balance")
         self.stock_now = self._panel_row(panel_layout, 2, "Stock on hand", "Stock / inventory")
         self.unit_cost = self._panel_row(panel_layout, 3, "Cost to buy one unit",
                                          "Cost of goods sold (COGS)")
         self.fixed = self._panel_row(panel_layout, 4, "Fixed costs this month", "Fixed costs")
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        panel_layout.addWidget(line, 5, 0, 1, 2)
+        panel_layout.addWidget(rule(), 5, 0, 1, 2)
         self.plan_cost = self._panel_row(panel_layout, 6, "This plan costs now", None)
         self.cash_left = self._panel_row(panel_layout, 7, "Cash left after purchases",
                                          "Cash flow")
@@ -59,6 +53,7 @@ class DecisionsScreen(Screen):
         self.fixed_note.setObjectName("Muted")
         self.fixed_note.setWordWrap(True)
         panel_layout.addWidget(self.fixed_note, 8, 0, 1, 2)
+        panel_layout.setRowStretch(9, 1)
         columns.addWidget(panel, 2)
         self.body.addLayout(columns)
 
@@ -69,6 +64,7 @@ class DecisionsScreen(Screen):
         self.body.addWidget(self.errors)
 
         buttons = QHBoxLayout()
+        buttons.setSpacing(10)
         self.simulate = QPushButton("")
         self.simulate.setObjectName("Primary")
         self.simulate.clicked.connect(self.run)
@@ -128,15 +124,17 @@ class DecisionsScreen(Screen):
         self.plan_cost.setText(fmt_money(cost))
         self.cash_left.setText(fmt_money(left))
         self.cash_left.setObjectName("Bad" if left < 0 else "Good")
-        self.cash_left.style().unpolish(self.cash_left)
-        self.cash_left.style().polish(self.cash_left)
+        repolish(self.cash_left)
 
     def run(self):
         # Field-by-field messages first, so the user sees which box to fix.
-        _, price_error = validation.parse_money(self.price.text(), "Price")
+        _, price_error = validation.parse_money(self.price.text(), "Price",
+                                                maximum=validation.MAX_PRICE)
         _, marketing_error = validation.parse_money(self.marketing.text(),
-                                                    "Marketing spend", allow_zero=True)
-        _, units_error = validation.parse_whole(self.units.text(), "Units to buy", 0)
+                                                    "Marketing spend", allow_zero=True,
+                                                    maximum=validation.MAX_CAPITAL)
+        _, units_error = validation.parse_whole(self.units.text(), "Units to buy", 0,
+                                                validation.MAX_UNITS)
         self.price.set_error(price_error)
         self.marketing.set_error(marketing_error)
         self.units.set_error(units_error)

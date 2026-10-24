@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from PyQt6.QtWidgets import QComboBox, QGridLayout, QHBoxLayout, QLabel, QPushButton
 
 from ui.style import fmt_money
-from ui.widgets import FormField, Screen, muted, section
+from ui.widgets import FormField, Screen, card, muted, repolish, section
 
 
 class CreateBusinessScreen(Screen):
@@ -15,6 +15,9 @@ class CreateBusinessScreen(Screen):
                          "decisions.")
         g = app.glossary
 
+        # Card 1: the business itself
+        business_card, business_layout = card(spacing=12)
+        business_layout.addWidget(section("Your business"))
         grid = QGridLayout()
         grid.setHorizontalSpacing(24)
         grid.setVerticalSpacing(10)
@@ -25,6 +28,7 @@ class CreateBusinessScreen(Screen):
         industry_box = FormField("Industry")
         industry_box.edit.hide()           # reuse the label + error layout
         self.industry = QComboBox()
+        self.industry.setAccessibleName("Industry")
         industry_box.layout().insertWidget(1, self.industry)
         self.industry.currentIndexChanged.connect(self.fill_industry_defaults)
         grid.addWidget(industry_box, 0, 1)
@@ -38,17 +42,19 @@ class CreateBusinessScreen(Screen):
         grid.addWidget(self.price, 1, 1)
         grid.addWidget(self.stock, 2, 0)
         grid.addWidget(self.marketing, 2, 1)
-        self.body.addLayout(grid)
+        business_layout.addLayout(grid)
 
         self.summary = QLabel("")
         self.summary.setObjectName("Muted")
-        self.body.addWidget(self.summary)
+        business_layout.addWidget(self.summary)
+        self.body.addWidget(business_card)
 
-        self.body.addSpacing(8)
-        self.body.addWidget(section("Industry starting values"))
-        self.body.addWidget(muted("Filled in with typical figures for the industry you "
-                                  "chose. Change them if you want to model a particular "
-                                  "business."))
+        # Card 2: the industry figures this business will run on
+        values_card, values_layout = card(spacing=12)
+        values_layout.addWidget(section("Industry starting values"))
+        values_layout.addWidget(muted("Filled in with typical figures for the industry you "
+                                      "chose. Change them if you want to model a particular "
+                                      "business."))
         values = QGridLayout()
         values.setHorizontalSpacing(24)
         values.setVerticalSpacing(10)
@@ -64,14 +70,16 @@ class CreateBusinessScreen(Screen):
         values.addWidget(self.unit_cost, 1, 0)
         values.addWidget(self.fixed_cost, 1, 1)
         values.addWidget(self.sensitivity, 2, 0)
-        values.addWidget(muted("How strongly customers react to price. Higher means a "
-                               "price rise loses more customers."), 2, 1)
-        self.body.addLayout(values)
+        values.addWidget(muted("How strongly customers react to price, from 0.01 to 5. "
+                               "Higher means a price rise loses more customers."), 2, 1)
+        values_layout.addLayout(values)
+        self.body.addWidget(values_card)
 
         for field in (self.capital, self.stock, self.unit_cost):
             field.edit.textChanged.connect(self.update_summary)
 
         buttons = QHBoxLayout()
+        buttons.setSpacing(10)
         create = QPushButton("Create business")
         create.setObjectName("Primary")
         create.clicked.connect(self.create)
@@ -80,7 +88,6 @@ class CreateBusinessScreen(Screen):
         buttons.addWidget(create)
         buttons.addWidget(cancel)
         buttons.addStretch()
-        self.body.addSpacing(8)
         self.body.addLayout(buttons)
         self.body.addStretch()
 
@@ -128,8 +135,7 @@ class CreateBusinessScreen(Screen):
         self.summary.setText(f"Initial stock will cost {fmt_money(cost)}, leaving "
                              f"{fmt_money(left)} in cash.")
         self.summary.setObjectName("Bad" if left < 0 else "Muted")
-        self.summary.style().unpolish(self.summary)
-        self.summary.style().polish(self.summary)
+        repolish(self.summary)
 
     def create(self):
         form = {key: field.text() for key, field in self.fields.items()}

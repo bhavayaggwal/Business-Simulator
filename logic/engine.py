@@ -11,6 +11,10 @@ from logic.models import BusinessState, Decisions, MonthResult
 
 PENNY = Decimal("0.01")
 
+# Demand is stored in an INT column (largest value about 2.1 billion). A very
+# low price with a high price sensitivity could otherwise produce a bigger number.
+MAX_DEMAND = 1_000_000_000
+
 
 def money(value) -> Decimal:
     """Round any number to pounds and pence."""
@@ -29,7 +33,8 @@ def marketing_effect(spend, max_boost, k) -> float:
 
 def calculate_demand(base, price_eff, marketing_eff, market_factor) -> int:
     """Whole units customers want this month (a fraction of a product can't be sold)."""
-    return max(0, math.floor(base * price_eff * marketing_eff * market_factor))
+    demand = math.floor(base * price_eff * marketing_eff * market_factor)
+    return max(0, min(demand, MAX_DEMAND))
 
 
 def units_sold(demand: int, available: int) -> int:
@@ -114,8 +119,8 @@ def explain_month(state: BusinessState, result: MonthResult) -> list:
 
     available = result.opening_stock + result.units_purchased
     if result.demand > available:
-        reasons.append(f"You ran out of stock: {result.demand} customers wanted to buy "
-                       f"but you only had {available} units.")
+        reasons.append(f"You ran out of stock: {result.demand:,} customers wanted to buy "
+                       f"but you only had {available:,} units.")
 
     cash_change = result.closing_cash - result.opening_cash
     if result.profit > 0 and cash_change < 0:

@@ -1,31 +1,30 @@
 """Month results, laid out like real financial statements.
 
-Profit and loss sits beside the cash reconciliation so the student can see,
-line by line, why profit and the change in cash are different numbers.
-Deductions are shown in brackets and totals are double-underlined, as in a
-set of accounts.
+Profit and loss sits beside the cash statement so the student can see, line
+by line, why profit and the change in cash are different numbers. Deductions
+are shown in brackets and totals are double-underlined, as in a set of accounts.
 """
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton,
-                             QVBoxLayout)
+from PyQt6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
-from ui.style import LEDGER_GREEN, LOSS_RED, fmt_deduction, fmt_money, fmt_units
-from ui.widgets import InfoLabel, Screen, rule
+from ui import theme
+from ui.soft import SoftCard
+from ui.style import fmt_deduction, fmt_money, fmt_units
+from ui.widgets import InfoLabel, Screen, card, rule, set_tone
 
 RIGHT = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
 
 
-class StatementSheet(QFrame):
+class StatementSheet(SoftCard):
     """One statement: a heading, then label / amount lines and a total."""
 
     def __init__(self, heading, glossary):
         super().__init__()
-        self.setObjectName("Sheet")
         self.glossary = glossary
         self.grid = QGridLayout(self)
-        self.grid.setContentsMargins(20, 16, 20, 18)
+        self.grid.setContentsMargins(22, 16, 22, 18)
         self.grid.setHorizontalSpacing(24)
-        self.grid.setVerticalSpacing(2)
+        self.grid.setVerticalSpacing(5)
         title = QLabel(heading)
         title.setObjectName("Section")
         self.grid.addWidget(title, 0, 0, 1, 2)
@@ -44,14 +43,12 @@ class StatementSheet(QFrame):
         self.grid.addWidget(rule(), self.row + 1, 0, 1, 2)
         self.row += 2
 
-    def total(self, text, amount, term=None, colour=None):
-        label = self._label(text, term)
-        self.grid.addWidget(label, self.row, 0)
+    def total(self, text, amount, term=None, tone=None):
+        self.grid.addWidget(self._label(text, term), self.row, 0)
         value = QLabel(amount)
         value.setObjectName("Total")
         value.setAlignment(RIGHT)
-        if colour:
-            value.setStyleSheet(f"color: {colour};")
+        set_tone(value, tone)
         self.grid.addWidget(value, self.row, 1)
         self.row += 1
 
@@ -65,15 +62,13 @@ class ResultsScreen(Screen):
         self.body.addWidget(self.headline)
 
         self.sheets_area = QVBoxLayout()
-        self.sheets_area.setSpacing(16)
+        self.sheets_area.setSpacing(0)
         self.body.addLayout(self.sheets_area)
 
-        self.explain = QFrame()
-        self.explain.setObjectName("Explain")
-        explain_layout = QVBoxLayout(self.explain)
-        explain_layout.setContentsMargins(16, 12, 16, 12)
+        self.explain, explain_layout = card(margins=(22, 16, 22, 18), spacing=6,
+                                            tone="accent")
         explain_title = QLabel("What happened this month")
-        explain_title.setStyleSheet("font-weight: 600;")
+        explain_title.setObjectName("ExplainTitle")
         explain_layout.addWidget(explain_title)
         self.explain_text = QLabel("")
         self.explain_text.setWordWrap(True)
@@ -81,6 +76,7 @@ class ResultsScreen(Screen):
         self.body.addWidget(self.explain)
 
         buttons = QHBoxLayout()
+        buttons.setSpacing(10)
         self.next_button = QPushButton("Next month")
         self.next_button.setObjectName("Primary")
         self.next_button.clicked.connect(lambda: self.app.go("decisions"))
@@ -96,17 +92,27 @@ class ResultsScreen(Screen):
         self.body.addStretch()
 
     def _clear_sheets(self):
+        """Remove the previous month's statements.
+
+        deleteLater() only deletes a widget once Qt is next idle, so each one is
+        hidden first; otherwise it stays on screen behind the new statements."""
         while self.sheets_area.count():
             item = self.sheets_area.takeAt(0)
             if item.widget():
+                item.widget().hide()
                 item.widget().deleteLater()
             elif item.layout():
                 inner = item.layout()
                 while inner.count():
                     child = inner.takeAt(0)
                     if child.widget():
+                        child.widget().hide()
                         child.widget().deleteLater()
                 inner.deleteLater()
+
+    def retheme(self):
+        # The headline is rich text with colours written into it, so redraw it.
+        self.refresh()
 
     def refresh(self):
         report = self.app.last_report
@@ -114,6 +120,7 @@ class ResultsScreen(Screen):
             return
         r = report.result
         g = self.app.glossary
+        t = theme.current()
         self.title.setText(f"Month {r.month_no} results")
         self.subtitle.setText(f"Price {fmt_money(r.price)}, marketing "
                               f"{fmt_money(r.marketing_spend)}, "
@@ -121,9 +128,10 @@ class ResultsScreen(Screen):
 
         cash_change = r.closing_cash - r.opening_cash
         profit_word = "a profit" if r.profit >= 0 else "a loss"
-        profit_colour = LEDGER_GREEN if r.profit >= 0 else LOSS_RED
+        profit_tone = "good" if r.profit >= 0 else "bad"
         cash_word = "rose" if cash_change >= 0 else "fell"
-        cash_colour = LEDGER_GREEN if cash_change >= 0 else LOSS_RED
+        profit_colour = t.good if r.profit >= 0 else t.bad
+        cash_colour = t.good if cash_change >= 0 else t.bad
         self.headline.setText(
             f"<span style='font-size:13pt'>You made {profit_word} of "
             f"<b style='color:{profit_colour}'>{fmt_money(abs(r.profit))}</b>, and your "
@@ -148,7 +156,7 @@ class ResultsScreen(Screen):
         pnl.line("Marketing", fmt_deduction(r.marketing_spend), "Marketing spend")
         pnl.line("Fixed costs", fmt_deduction(r.fixed_cost), "Fixed costs")
         pnl.total("Profit" if r.profit >= 0 else "Loss", fmt_money(r.profit),
-                  "Profit / loss", profit_colour)
+                  "Profit / loss", profit_tone)
 
         # Cash
         cash = StatementSheet("Cash", g)
@@ -158,11 +166,11 @@ class ResultsScreen(Screen):
         cash.line("Marketing", fmt_deduction(r.marketing_spend))
         cash.line("Fixed costs", fmt_deduction(r.fixed_cost))
         cash.total("Closing cash", fmt_money(r.closing_cash), "Cash balance",
-                   LOSS_RED if r.closing_cash < 0 else None)
+                   "bad" if r.closing_cash < 0 else None)
 
         self.sheets_area.addWidget(sales)
         side_by_side = QHBoxLayout()
-        side_by_side.setSpacing(16)
+        side_by_side.setSpacing(0)
         side_by_side.addWidget(pnl)
         side_by_side.addWidget(cash)
         self.sheets_area.addLayout(side_by_side)
